@@ -1,0 +1,250 @@
+:root {
+  --green: #0f6e56;
+  --green-2: #12876a;
+  --line: #e6e8eb;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --bg: #f5f6f8;
+  --time-w: 52px;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  /* 底部信息条已经改成随页面滚动（不再固定），所以这里不需要为它留白了。
+     只留一点，免得课表最后一行贴着屏幕边缘。 */
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+.hidden { display: none !important; }
+
+/* boot.js 在解析阶段加上 js 标记，app.js 决定显示哪块后移除。
+   没有它，HTML 解析完到脚本执行之间会先渲染出一帧"登录+课表同框"。 */
+html.js #login, html.js #app { display: none !important; }
+
+/* ---------------- 登录 ---------------- */
+.login-wrap {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 18px;
+  background: linear-gradient(165deg, #0f6e56 0%, #12876a 40%, #f5f6f8 40.1%, #f5f6f8 100%);
+}
+.login-card {
+  width: 100%; max-width: 380px; background: #fff;
+  border-radius: 16px; padding: 26px 22px 20px;
+  box-shadow: 0 12px 40px rgba(15, 110, 86, .16);
+}
+.brand { text-align: center; margin-bottom: 22px; }
+.logo {
+  width: 52px; height: 52px; margin: 0 auto 10px; border-radius: 14px;
+  background: var(--green); color: #fff; font-size: 26px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.brand h1 { margin: 0; font-size: 19px; letter-spacing: .5px; }
+.brand .sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+.field { display: block; margin-bottom: 14px; }
+.field span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.field input {
+  width: 100%; height: 44px; padding: 0 12px; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: #fafbfc; outline: none;
+  transition: border-color .15s, background .15s;
+}
+.field input:focus { border-color: var(--green-2); background: #fff; }
+
+.remember { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin: 2px 0 16px; }
+.remember input { width: 15px; height: 15px; accent-color: var(--green); }
+
+/* 已在本机保存过密码时的提示（安卓版免登录的依据） */
+.saved-hint {
+  margin: -8px 0 14px; padding: 7px 10px; border-radius: 8px;
+  background: #eef7f4; color: #0f6e56; font-size: 11.5px; line-height: 1.5;
+}
+
+#login-btn {
+  width: 100%; height: 46px; border: 0; border-radius: 10px;
+  background: var(--green); color: #fff; font-size: 16px; font-weight: 600; letter-spacing: 4px;
+}
+#login-btn:active { opacity: .85; }
+#login-btn[disabled] { opacity: .6; }
+.msg { min-height: 18px; margin: 10px 0 0; font-size: 12.5px; color: #c81e1e; text-align: center; }
+.tips { margin: 14px 0 0; font-size: 11.5px; color: #9aa1a9; text-align: center; line-height: 1.6; }
+
+/* ---------------- 顶栏 / 控件 ---------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  background: var(--green); color: #fff;
+}
+.who b { font-size: 16px; font-weight: 600; }
+.who small { display: block; font-size: 11.5px; opacity: .82; margin-top: 1px; }
+.ghost {
+  background: rgba(255,255,255,.16); color: #fff; border: 0;
+  padding: 6px 12px; border-radius: 8px; font-size: 12.5px;
+}
+.ghost.wide { width: 100%; background: #eef0f2; color: var(--text); padding: 10px; margin-top: 14px; }
+
+.controls { display: flex; gap: 8px; padding: 10px 12px 6px; align-items: center; background: var(--green); }
+.term {
+  flex: 1; min-width: 0; height: 34px; border: 0; border-radius: 8px; padding: 0 8px;
+  font-size: 12.5px; color: var(--text); background: rgba(255,255,255,.94);
+  appearance: none; text-overflow: ellipsis;
+}
+.week-nav { display: flex; align-items: center; background: rgba(255,255,255,.16); border-radius: 8px; overflow: hidden; }
+.step { width: 32px; height: 34px; border: 0; background: transparent; color: #fff; font-size: 19px; line-height: 1; }
+.step:active { background: rgba(0,0,0,.12); }
+.week-label { min-width: 76px; height: 34px; border: 0; background: transparent; color: #fff; font-size: 12.5px; font-weight: 600; }
+.week-label.cur::after { content: " · 本周"; opacity: .85; font-weight: 400; }
+
+.week-dates { display: flex; padding: 0 12px 9px; background: var(--green); color: rgba(255,255,255,.86); font-size: 10.5px; }
+.week-dates > div { flex: 1 1 0; text-align: center; }
+.week-dates .d-label { flex: 0 0 var(--time-w); }
+
+/* ---------------- 课表 ---------------- */
+.timetable {
+  /* 手机宽度下横向空间很紧：左右各 12px 外边距加左栏 52px，7 列只剩 30 出头。
+     收到 8px 能让每一列多分到几个像素，课程名换行明显改善。 */
+  margin: 10px 8px 0; background: #fff; border-radius: var(--radius);
+  overflow: hidden; box-shadow: 0 1px 3px rgba(16,24,40,.06);
+}
+.grid-head { display: flex; border-bottom: 1px solid #eceef1; background: #fafbfc; }
+/* ⚠️ 表头左角必须和正文左栏同宽，否则整行星期都会横向错位。
+   真机上出现过"表头'一'对不上下面的课列"：这里原本只有 height，
+   宽度由内容（"第6周"）撑开，实测只有 45px，而正文左栏是 52px，
+   于是表头整排比课列左移 15px，越靠左错得越多（周日差 2px、周一差 15px）。
+   用和 .grid-times 完全相同的 flex/width 才是真正对齐。 */
+.grid-head .g-time {
+  flex: 0 0 var(--time-w); width: var(--time-w);
+  height: 32px; box-sizing: border-box;
+}
+.grid-head .g-cell {
+  flex: 1 1 0; min-width: 0; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--muted); border-left: 1px solid #f4f5f7;
+  box-sizing: border-box;
+}
+.grid-head .g-cell b { font-weight: 600; color: #4b5563; }
+.grid-head .g-cell.today { background: #f2fbf8; }
+.grid-head .g-cell.today b { color: var(--green); }
+
+.grid-body { display: flex; }
+.grid-times { flex: 0 0 var(--time-w); width: var(--time-w); }
+/* 左栏一格 = 一节课：上行节次，下行"上课-下课"时间。
+   之前只显示开始时间，看不到下课时间，等于答不出"这节课几点结束"。 */
+.grid-times .g-time {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; line-height: 1.18;
+  font-size: 8.5px; color: var(--muted); border-bottom: 1px solid #f4f5f7;
+  padding: 0 1px; overflow: hidden;
+}
+.grid-times .g-time b { font-size: 11.5px; color: #4b5563; font-weight: 600; line-height: 1.1; }
+.grid-times .g-time:last-child { border-bottom: 0; }
+
+.grid-cols { flex: 1 1 0; display: flex; min-width: 0; align-items: flex-start; }
+.grid-col { flex: 1 1 0; min-width: 0; border-left: 1px solid #f4f5f7; }
+.grid-col.today { background: #f7fdfb; }
+.slot { border-bottom: 1px solid #f4f5f7; padding: 1px 2px; display: flex; flex-direction: column; gap: 3px; }
+.grid-col .slot:last-child { border-bottom: 0; }
+
+/* 课程卡片 */
+.blk {
+  width: 100%; min-height: 0; border: 0; border-radius: 6px; padding: 4px 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  overflow: hidden; font: inherit; text-align: center; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.04);
+  /* ⚠️ 这一行不能少。
+     跨节次的卡片是靠内联 height 撑高、向下溢出到后续行的格子上的。
+     .slot 是 flex 容器，而 flex 子项默认 flex-shrink:1 —— 于是浏览器会把这个
+     151px 的 height 压回单行高度（实测只剩 73px），结果"第 5-6 节的课只在
+     第 5 节显示出色块，第 6 节看起来是空的"。这正是真机上看到的现象。
+     flex:0 0 auto 表示"不伸不缩，按我给的高度来"，卡片才能盖满它声称的节次范围。 */
+  flex: 0 0 auto;
+}
+.blk:active { filter: brightness(.94); }
+.blk .b-name {
+  font-size: 11px; font-weight: 600; line-height: 1.25;
+  word-break: break-word; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden;
+}
+.blk .b-room {
+  font-size: 9.5px; opacity: .82; margin-top: 3px; line-height: 1.2;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.empty-hint { padding: 34px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---------------- 详情 ---------------- */
+.sheet { position: fixed; inset: 0; z-index: 50; }
+.sheet-mask { position: absolute; inset: 0; background: rgba(0,0,0,.42); }
+.sheet-body {
+  position: absolute; left: 0; right: 0; bottom: 0; background: #fff;
+  border-radius: 16px 16px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  max-height: 76vh; overflow: auto; animation: up .18s ease-out;
+}
+@keyframes up { from { transform: translateY(16px); opacity: .6; } }
+.sheet-body h3 { margin: 0 0 12px; font-size: 16px; }
+.sheet-body dl { margin: 0; }
+.sheet-body dt { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+.sheet-body dd { margin: 2px 0 0; font-size: 14px; }
+
+/* ---------------- 提示 ---------------- */
+.toast {
+  position: fixed; left: 50%; bottom: 26%; transform: translateX(-50%);
+  background: rgba(0,0,0,.8); color: #fff; font-size: 13px; padding: 9px 16px;
+  border-radius: 20px; z-index: 60; max-width: 82vw; text-align: center;
+}
+.loading {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  z-index: 70; background: rgba(255,255,255,.56);
+}
+.spin {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid rgba(15,110,86,.25); border-top-color: var(--green);
+  animation: sp .8s linear infinite;
+}
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* 平板 / 桌面：居中收窄，符号放大 */
+@media (min-width: 620px) {
+  .topbar, .controls, .week-dates, .timetable { max-width: 880px; margin-left: auto; margin-right: auto; }
+  .topbar { border-radius: 0; }
+  .blk .b-name { font-size: 12px; }
+  .blk .b-room { font-size: 10px; }
+  .grid-head .g-cell { font-size: 13px; }
+}
+
+/* 底部信息条：构建版本 + 仓库地址。
+   放在课表**下面**随页面滚动，把页面划到底才看得到——不再固定吸在屏幕底部。
+   早先是 position:fixed 的，一直占着视线，还会压住第 11 节。
+   保留 pointer-events 的设置：容器不拦点击，只让仓库链接可点。 */
+.app-footer {
+  margin: 14px 8px 6px;
+  padding: 10px 0 4px;
+  text-align: center;
+  pointer-events: none;
+  border-top: 1px solid #eceef1;
+}
+.build-id {
+  margin: 1px 0 0;
+  font-size: 10.5px;
+  color: #9aa1a9;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: .2px;
+}
+/* 仓库地址：方便用户装机后自己去拿新版本 */
+.repo-link {
+  display: inline-block;
+  pointer-events: auto;
+  font-size: 10.5px;
+  color: #7d858d;
+  text-decoration: none;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: .2px;
+  padding: 1px 6px; border-radius: 4px;
+}
+.repo-link:active { color: var(--green); background: rgba(15,110,86,.08); }

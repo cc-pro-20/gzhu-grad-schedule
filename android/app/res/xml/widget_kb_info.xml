@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  小组件元数据：默认约 4x4 格，可自由缩放。
+  updatePeriodMillis 设为 0：系统最短只允许 30 分钟且不保证准时，
+  定时刷新改由 WidgetScheduler（AlarmManager）负责。
+  刻意不使用 targetCellWidth / description 等 API 31+ 属性，保持低版本兼容。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="180dp"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_kb" />

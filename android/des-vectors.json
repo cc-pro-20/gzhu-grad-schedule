@@ -1,0 +1,79 @@
+[
+ {
+  "un": "2000000000",
+  "pd": "FakePass2026!x",
+  "lt": "LT-186476-GNlYaZfXqqz6FO06yBBZolSAEzXaS7-cas",
+  "plain": "2000000000FakePass2026!xLT-186476-GNlYaZfXqqz6FO06yBBZolSAEzXaS7-cas",
+  "rsa": "69EBC4CACEF7C03D315CB4B8654EACF2D26B4219006B1A74CA6008E6C91CA8A9B6F60AE42F2A6957D68E192B34F48C123F87C346C8672F7C7EC909176E101370267AD036773C971B1DA3B9DDB82BD2291241208AC1E68E15006E01C38F505748ACF1D62876B2146CBF36892D91D62733C5C5D4E49C31420A114516E1695138B18AB35967D5AA0BA7"
+ },
+ {
+  "un": "a",
+  "pd": "b",
+  "lt": "c",
+  "plain": "abc",
+  "rsa": "39644174795FB4D0"
+ },
+ {
+  "un": "abcd",
+  "pd": "1234",
+  "lt": "LT-1",
+  "plain": "abcd1234LT-1",
+  "rsa": "A9CF2704230383D1C1BB5938DF9F21903F87C346C8672F7C"
+ },
+ {
+  "un": "测试中文",
+  "pd": "pwd",
+  "lt": "LT-x",
+  "plain": "测试中文pwdLT-x",
+  "rsa": "76A9DC22A58054FE18236D748F25F5714234D41FC8C98508"
+ },
+ {
+  "un": "abcdefghij",
+  "pd": "password123",
+  "lt": "LT-9999999999-cas",
+  "plain": "abcdefghijpassword123LT-9999999999-cas",
+  "rsa": "A9CF2704230383D1EEE0EB174D2B1826EBEBF68F512245E1C9A619B01DB8075905ACC13163B15B0BEA049D4A54499B626B39D0776004577C6B39D0776004577C0A4DABA4407B6CEE9A216BCFE6054686"
+ },
+ {
+  "un": "12345678",
+  "pd": "x",
+  "lt": "LT-1",
+  "plain": "12345678xLT-1",
+  "rsa": "C1BB5938DF9F2190B89172CB54C8C33AD99E0967C77FF618FF175F03E46ADFCE"
+ },
+ {
+  "un": "1234",
+  "pd": "x",
+  "lt": "LT-1",
+  "plain": "1234xLT-1",
+  "rsa": "C1BB5938DF9F2190D99E0967C77FF618FF175F03E46ADFCE"
+ },
+ {
+  "un": "123",
+  "pd": "x",
+  "lt": "LT-1",
+  "plain": "123xLT-1",
+  "rsa": "5E2DC5CA555EB3463F87C346C8672F7C"
+ },
+ {
+  "un": "1",
+  "pd": "",
+  "lt": "",
+  "plain": "1",
+  "rsa": "FF175F03E46ADFCE"
+ },
+ {
+  "un": "0",
+  "pd": "0",
+  "lt": "0",
+  "plain": "000",
+  "rsa": "216741B89F2CE92C"
+ },
+ {
+  "un": "!@#$%^&*()_+",
+  "pd": "~`|\\:\";'<>?,./",
+  "lt": "LT-abc",
+  "plain": "!@#$%^&*()_+~`|\\:\";'<>?,./LT-abc",
+  "rsa": "396BEE3B94ECA41EBA39E29420F2B8ACCC2867673FC88B7871BDC80DA54DC8473080D594BDFD7C4D0A0A2BFE532050AAC0154491DE2E3C6B7DBBAFFA02992D43"
+ }
+]

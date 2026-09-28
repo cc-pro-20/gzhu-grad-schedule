@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用名统一为「gzhu课表」：桌面图标、小组件标题、登录页大字、网页标题
+         都用这一个名字，避免出现"图标一个名、进 App 又一个名"。
+         仓库名是 gzhu-grad-schedule；改名不影响包名 cn.edu.gzhu.kb，
+         也不影响覆盖安装。 -->
+    <string name="app_name">gzhu课表</string>
+    <string name="widget_title_default">gzhu课表</string>
+    <string name="widget_refresh">刷新</string>
+    <string name="widget_desc">桌面课表：整周课程缩略图</string>
+</resources>
