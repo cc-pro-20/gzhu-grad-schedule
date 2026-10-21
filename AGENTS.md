@@ -21,9 +21,39 @@
 
 GitHub 简介（已在仓库上生效）：
 
-> 广州大学研究生课表安卓 App｜纯本地，登录即用，桌面整周课表小组件｜无服务器、无第三方依赖、凭据 Keystore 加密｜构建不需要 Gradle / Android Studio
+> 广州大学 广大 研究生 课表 课程表 安卓 App｜GZHU Grad Timetable / Schedule for Android｜纯本地 · 桌面整周课表小组件 · 记住密码免登录 · Keystore 加密 · 构建无需 Gradle
 
-建议 topics：`gzhu` `timetable` `schedule` `android` `webview` `appwidget` `keystore` `no-gradle` `chinese-university` `graduate`
+**已设置的 topics**（16 个）：
+`gzhu` `guangzhou` `guangzhou-university` `kebiao` `timetable` `schedule`
+`course-schedule` `android` `android-app` `java` `webview` `app-widget`
+`keystore` `no-gradle` `graduate-student` `chinese-university`
+
+### ⚠️ GitHub 搜索：topics 不支持中文，中文必须在描述里用空格隔开
+
+两条实测结论（2026-10 验证，别重复踩）：
+
+1. **topics 只允许小写字母、数字、连字符**——"课表"这类中文 topic 根本设不上去。
+   中文检索走的是仓库**描述**（`in:description`）。
+2. **GitHub 把连续的整串中文当成一个词**。旧描述写的是
+   `广州大学研究生课表安卓 App`，于是"课表"、"广州大学"单独都搜不到；
+   改成 `广州大学 广大 研究生 课表 课程表 安卓 App` 之后才命中。
+
+改完描述后**索引要几十秒到几分钟**才生效，刚改完立刻搜不到属正常。
+
+实测能命中的查询：
+
+| 查询 | 结果 |
+| --- | --- |
+| `广州大学 课表` | 命中（第 5 / 共 6） |
+| `广大 课表` | 命中（第 3 / 共 10） |
+| `gzhu 课表` | 命中（第 3 / 共 5） |
+| `广州大学 安卓` | 命中（第 1 / 共 1） |
+| `gzhu timetable` | 命中（第 1 / 共 1） |
+| `guangzhou timetable` | 命中（第 2 / 共 2） |
+
+**搜不到的单字词**：`课表`（4700+ 结果）、`gzhu`（270+ 结果）、`kebiao`（170 结果）。
+这类泛词里 0 星仓库排不进首页——排序看的是星标与活跃度，不是关键词匹配。
+想改善只能靠真实传播（星标、引用链接），**不要靠堆 topics 作弊**。
 
 ### 仓库名的由来（别再改名，也别再想"更好听"的）
 
