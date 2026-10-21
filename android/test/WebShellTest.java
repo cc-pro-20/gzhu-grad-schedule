@@ -95,6 +95,18 @@ public class WebShellTest {
         check("GET /api/saved 返回 200", saved != null && saved.getStatusCode() == 200);
         String savedBody = saved == null ? "" : saved.bodyText();
         check("  /api/saved 含 hasPassword 字段 -> " + savedBody, savedBody.contains("\"hasPassword\":false"));
+        // 这些字段是"为什么没记住密码/为什么要重登"的唯一线索，缺了就等于把
+        // 失败原因吞掉——正是用户报"密码没记住、经常要手动登录"时看不到原因的原因。
+        check("  /api/saved 上报凭据错误 -> " + savedBody, savedBody.contains("\"credError\""));
+        check("  /api/saved 上报上次登录错误 -> " + savedBody, savedBody.contains("\"lastAuthError\""));
+        check("  /api/saved 上报会话状态", savedBody.contains("\"hasSession\""));
+
+        // 没有已保存密码时，"用已保存的密码登录"必须明确拒绝，而不是挂住
+        WebResourceResponse lws = shell.intercept(
+                "http://appassets.androidplatform.net/api/login-with-saved", "GET", null, null);
+        check("GET /api/login-with-saved（无凭据）返回 400", lws != null && lws.getStatusCode() == 400);
+        String lwsBody = lws == null ? "" : lws.bodyText();
+        check("  提示没有可用的已保存密码 -> " + lwsBody, lwsBody.contains("没有可用的已保存密码"));
 
         // 未知接口也必须返回 JSON 错误（未登录时先被鉴权拦下返回 401，而不是空响应）
         WebResourceResponse unk = shell.intercept("http://appassets.androidplatform.net/api/nope", "GET", null);
@@ -280,6 +292,36 @@ public class WebShellTest {
             int appEnd = html.lastIndexOf("</section>");
             check("信息条位于 #app 内部（课表下方，随页面滚动）",
                 appIdx >= 0 && footIdx > appIdx && footIdx < appEnd);
+        }
+
+        System.out.println("\n=== 11) 切换周次后日期仍要显示 ===");
+        {
+            String js = new String(Files.readAllBytes(Paths.get(assetsWww.getPath(), "app.js")),
+                    StandardCharsets.UTF_8);
+            // 回归点：学校接口只给"本周"的日期，旧实现"不是本周就不显示日期"，
+            // 于是点上一周/下一周后日期整排消失（用户报的第三个问题）。
+            // 现在用 shiftRq() 按周差平移本周日期，任何一周都有日期。
+            check("有按周平移日期的函数（shiftRq）", js.contains("function shiftRq("));
+            check("renderDates 用 curDays 作基准", js.contains("state.data.curDays"));
+            check("renderDates 按周差平移", js.contains("offsetDays") && js.contains("shiftRq("));
+            // 旧逻辑的特征：一旦不是本周就整块隐藏。必须不再出现。
+            check("不再因为不是本周就隐藏日期",
+                !js.contains("if (!isCur || !Object.keys(byDay).length)"));
+        }
+
+        System.out.println("\n=== 12) 密码存不住 / 会话过期时要说清原因 ===");
+        {
+            String html = new String(Files.readAllBytes(Paths.get(assetsWww.getPath(), "index.html")),
+                    StandardCharsets.UTF_8);
+            String js = new String(Files.readAllBytes(Paths.get(assetsWww.getPath(), "app.js")),
+                    StandardCharsets.UTF_8);
+
+            // 登录页要有"用已保存的密码登录"的入口：凭据还在时不该逼用户重输密码
+            check("登录页有 saved-login-btn", html.contains("id=\"saved-login-btn\""));
+            check("前端会调用 /api/login-with-saved", js.contains("'/api/login-with-saved'"));
+            check("有登录后反馈是否记住密码的逻辑", js.contains("function reportRemembered("));
+            check("会把 credError / lastAuthError 显示给用户",
+                js.contains("s.credError") && js.contains("s.lastAuthError"));
         }
 
         System.out.println();

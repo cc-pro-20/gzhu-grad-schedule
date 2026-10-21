@@ -64,6 +64,9 @@ const NEEDED = [
   'Json.java', 'KbStore.java', 'CredentialStore.java', 'MemoryStores.java',
   'Http.java', 'School.java', 'Des.java', 'KbModel.java',
   'KbRepository.java', 'LoginState.java',
+  // KbRepository 现在会用 Diag 记录"会话失效后自动重登"这类事件，
+  // 桌面测试里 Diag 依赖的 android.util.Log 由 test/stubs 提供。
+  'Diag.java',
 ];
 
 const files = NEEDED.map((f) => path.join(SRC, f))

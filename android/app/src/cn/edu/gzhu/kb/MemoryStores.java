@@ -35,6 +35,14 @@ public final class MemoryStores {
 
         @Override
         public void clearPassword() { pass = ""; }
+
+        /** 内存实现不会失败；测试里可以手动设置它来模拟"存不住"的场景 */
+        @Override
+        public String lastError() { return err; }
+
+        public void setLastError(String e) { err = e == null ? "" : e; }
+
+        private String err = "";
     }
 
     /** 内存版 cookie 存储 */

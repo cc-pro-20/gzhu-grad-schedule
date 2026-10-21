@@ -175,10 +175,26 @@ public final class WebShell {
                 return json(200, repo.loginState().toMap());
             }
 
+            if ("/api/login-with-saved".equals(path)) {
+                // 用本机已保存的密码再登一次，不需要页面重新输入。
+                // 场景：启动时自动登录因网络抖动失败、或会话中途过期。
+                if (!repo.hasSavedPassword()) {
+                    return error(400, "本机没有可用的已保存密码，请手动输入");
+                }
+                repo.startLoginWithSaved();
+                Diag.d("已用保存的凭据发起登录");
+                return json(200, repo.loginState().toMap());
+            }
+
             if ("/api/saved".equals(path)) {
+                // 这里要说清楚"到底存没存住"，否则用户只知道又要重输密码。
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("username", repo.userName());
-                out.put("hasPassword", repo.hasCredentials());
+                out.put("hasPassword", repo.hasSavedPassword());
+                out.put("hasCredentials", repo.hasCredentials());
+                out.put("hasSession", repo.hasSession());
+                out.put("credError", repo.lastCredError());
+                out.put("lastAuthError", repo.lastAuthError());
                 out.put("platform", "android");
                 return json(200, out);
             }
@@ -195,8 +211,9 @@ public final class WebShell {
                 return json(200, out);
             }
 
-            // 以下都需要登录
-            if (!repo.hasSession()) {
+            // 以下都需要登录（或至少需要已保存的凭据——那种情况下
+            // repo 内部会自动用凭据登录，不必让用户手动重输）
+            if (!repo.hasSession() && !repo.hasCredentials()) {
                 return error(401, "未登录");
             }
             if ("/api/terms".equals(path)) {

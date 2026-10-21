@@ -39,6 +39,9 @@
       </label>
       <p id="saved-hint" class="saved-hint hidden"></p>
       <button id="login-btn" type="submit">登 录</button>
+      <!-- 凭据还在本机时给一键重登：启动自动登录因网络抖动失败、或会话中途过期，
+           都不必让用户重新敲一遍密码 -->
+      <button id="saved-login-btn" type="button" class="ghost wide hidden">用已保存的密码登录</button>
       <p id="login-msg" class="msg"></p>
     </form>
     <p class="tips">账号密码仅用于向学校系统换取课表数据，不会上传到任何第三方。</p>
@@ -76,7 +79,7 @@
   <div class="app-footer">
     <a class="repo-link" href="https://github.com/cc-pro-20/gzhu-grad-schedule"
        target="_blank" rel="noopener">github.com/cc-pro-20/gzhu-grad-schedule</a>
-    <p class="build-id">构建 1.1.21（build21）</p>
+    <p class="build-id">构建 1.1.23（build23）</p>
   </div>
 
   <div id="detail" class="sheet hidden">

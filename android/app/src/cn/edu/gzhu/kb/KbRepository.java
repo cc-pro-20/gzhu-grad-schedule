@@ -39,6 +39,9 @@ public final class KbRepository {
     /** 异步登录的进度与结果，供页面轮询 */
     private final LoginState loginState = new LoginState();
 
+    /** 最近一次登录/会话恢复失败的原因，空串表示正常（供 /api/saved 上报） */
+    private volatile String lastAuthError = "";
+
     public KbRepository(Context ctx, CredentialStore cred, KbStore cookies) {
         this.ctx = ctx == null ? null : ctx.getApplicationContext();
         this.cred = cred;
@@ -55,10 +58,43 @@ public final class KbRepository {
         return !cred.username().isEmpty() && cred.hasPassword();
     }
 
+    /** 只问"存过密码没有"，不看学号（登录页据此决定是否给"一键重登"） */
+    public boolean hasSavedPassword() {
+        return cred.hasPassword();
+    }
+
+    /** 上一次凭据保存/读取失败的原因；空串表示没问题 */
+    public String lastCredError() {
+        return cred.lastError();
+    }
+
+    /**
+     * 上一次登录失败 / 会话恢复失败的原因，供页面展示。
+     *
+     * 用户报"经常要手动登录"，但从界面上完全看不出是密码没存住、Keystore 不可用，
+     * 还是会话过期后自动重登失败。把这个原因报到 /api/saved，登录页就能直说。
+     */
+    public String lastAuthError() {
+        return lastAuthError;
+    }
+
+    public void noteAuthError(String msg) {
+        lastAuthError = msg == null ? "" : msg;
+    }
+
     // ------------------------------------------------------------ 凭据
 
-    public void saveCredentials(String user, String password) {
+    /**
+     * 保存凭据。
+     *
+     * @return 是否真的存住了（保存后会读回校验）。用户勾了"记住密码"却没存住时，
+     *         调用方要能知道并提示，而不是让他在下次打开时莫名其妙地重输一遍。
+     */
+    public boolean saveCredentials(String user, String password) {
         cred.save(user, password);
+        boolean ok = cred.hasPassword() && !cred.password().isEmpty();
+        if (!ok) Log.w(TAG, "凭据保存失败: " + cred.lastError());
+        return ok;
     }
 
     public void clearCredentials() {
@@ -119,23 +155,43 @@ public final class KbRepository {
             Log.i(TAG, "已有登录进行中，忽略重复请求");
             return;
         }
-        loginState.start();
+        loginState.start(user);
         Thread t = new Thread(() -> {
             try {
-                if (remember) saveCredentials(user, pass);
-                else clearCredentials();
+                boolean saved = remember && saveCredentials(user, pass);
+                if (!remember) clearCredentials();
                 Map<String, Object> r = login(user, pass);
                 onLoginSuccess();
+                lastAuthError = "";
                 loginState.done(String.valueOf(r.get("name")));
-                Log.i(TAG, "登录成功: " + user);
+                Log.i(TAG, "登录成功: " + user + (remember && !saved
+                    ? "（但密码未存住: " + cred.lastError() + "）" : ""));
             } catch (Exception e) {
                 String m = e.getMessage();
-                loginState.fail(m == null || m.isEmpty() ? "登录失败，请检查网络" : m);
-                Log.w(TAG, "登录失败: " + m);
+                lastAuthError = m == null || m.isEmpty() ? "登录失败，请检查网络" : m;
+                loginState.fail(lastAuthError);
+                Log.w(TAG, "登录失败: " + lastAuthError);
             }
         }, "kb-async-login");
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * 用本机已保存的凭据发起登录（登录页的"用已保存的密码登录"）。
+     *
+     * 用途：启动时自动登录因为网络抖动失败，或者会话中途过期。这时不必让用户
+     * 重新输密码——凭据还在，点一下就能再试。
+     */
+    public synchronized void startLoginWithSaved() {
+        String un = cred.username();
+        String pd = cred.password();
+        if (un.isEmpty() || pd.isEmpty()) {
+            String why = cred.lastError();
+            loginState.fail("本机没有可用的已保存密码" + (why.isEmpty() ? "" : "：" + why));
+            return;
+        }
+        startLogin(un, pd, true);
     }
 
     public LoginState loginState() {
@@ -148,7 +204,8 @@ public final class KbRepository {
         String un = cred.username();
         String pd = cred.password();
         if (un.isEmpty() || pd.isEmpty()) {
-            throw new School.Fail("尚未保存账号密码，请先登录", true);
+            String why = cred.lastError();
+            throw new School.Fail("尚未保存账号密码，请先登录" + (why.isEmpty() ? "" : "（" + why + "）"), true);
         }
         School s = new School();
         s.login(un, pd);
@@ -156,26 +213,80 @@ public final class KbRepository {
         return s;
     }
 
+    /**
+     * 会话失效后用保存的凭据重登。
+     *
+     * 这是"经常需要手动登录"的根治点。原先只要 cookie 里还有会话标识，
+     * require() 就直接复用——可学校那边的会话是有有效期的，过期后业务接口返回
+     * 401，页面收到 401 就跳登录页，用户于是被要求重新输入密码，尽管本机
+     * **明明存着**能用的凭据。
+     *
+     * 现在：业务调用遇到 authFailed 时先清掉旧会话、用保存的凭据重登一次再重试，
+     * 只有连凭据都没有或凭据也失效时才真的请用户手动登录。
+     */
+    private synchronized School relogin(School.Fail cause) throws Exception {
+        String un = cred.username();
+        String pd = cred.password();
+        if (un.isEmpty() || pd.isEmpty()) {
+            String why = cred.lastError();
+            lastAuthError = "会话已过期，且本机没有可用的已保存密码"
+                + (why.isEmpty() ? "" : "（" + why + "）");
+            throw cause;
+        }
+        Diag.d("会话已失效，用保存的凭据自动重登");
+        session = null;
+        cookies.clear();
+        School s = new School();
+        s.login(un, pd);
+        session = s;
+        lastAuthError = "";
+        return s;
+    }
+
     // ------------------------------------------------------------ 业务数据
 
     public synchronized List<Map<String, Object>> terms() throws Exception {
         if (termsCache != null && !termsCache.isEmpty()) return termsCache;
-        termsCache = require().terms();
+        School school = require();
+        try {
+            termsCache = school.terms();
+        } catch (School.Fail e) {
+            if (!e.authFailed) throw e;
+            termsCache = relogin(e).terms();
+        }
         return termsCache;
     }
 
     public synchronized Map<String, Object> weeks() throws Exception {
-        return require().weeks();
+        School school = require();
+        try {
+            return school.weeks();
+        } catch (School.Fail e) {
+            if (!e.authFailed) throw e;
+            return relogin(e).weeks();
+        }
     }
 
     /**
      * 取指定周课表（week&lt;=0 表示跟随服务端"当前周"）。
      * 返回结构与 server/server.js 的 /api/kb 完全一致，前端无需区分来源。
      */
-    @SuppressWarnings("unchecked")
     public synchronized Map<String, Object> kb(String term, int week, boolean raw) throws Exception {
         School school = require();
-        List<Map<String, Object>> terms = terms();
+        try {
+            return buildKb(school, term, week, raw);
+        } catch (School.Fail e) {
+            if (!e.authFailed) throw e;
+            // 整个构建重来一遍，而不是只重试那一个请求：
+            // 会话换掉后，前面已经取到的数据（学期/节次）也不该再信任。
+            return buildKb(relogin(e), term, week, raw);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> buildKb(School school, String term, int week, boolean raw) throws Exception {
+        List<Map<String, Object>> terms = school.terms();
+        termsCache = terms;
 
         String xnxqdm = term;
         if (xnxqdm == null || xnxqdm.isEmpty()) {
@@ -216,7 +327,10 @@ public final class KbRepository {
         out.put("curWeek", curWeek);
         out.put("totalWeeks", 30);
         out.put("days", days);
-        out.put("curDays", useWeek == curWeek ? days : new java.util.ArrayList<Object>());
+        // 基准日期始终是**本周**的日期（curWeek），不管当前在看第几周。
+        // 前端拿它按周差平移算出任意一周的日期——学校接口只给本周日期，
+        // 以前这里"不是本周就返回空"，导致切周后日期整排消失。
+        out.put("curDays", days);
         out.put("jieci", jieci);
         out.put("flat", grid.get("flat"));
         out.put("rows", grid.get("rows"));

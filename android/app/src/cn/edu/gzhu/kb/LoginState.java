@@ -30,13 +30,20 @@ public final class LoginState {
     private Phase phase = Phase.IDLE;
     private String name = "";
     private String error = "";
+    /** 本次尝试的学号；页面用它回填/显示用户名（"用已保存的密码登录"时页面并不知道学号） */
+    private String username = "";
     private long startedAt;
     private long finishedAt;
 
     public synchronized void start() {
+        start("");
+    }
+
+    public synchronized void start(String user) {
         phase = Phase.RUNNING;
         name = "";
         error = "";
+        username = user == null ? "" : user;
         startedAt = System.currentTimeMillis();
         finishedAt = 0;
     }
@@ -86,6 +93,7 @@ public final class LoginState {
         phase = Phase.IDLE;
         name = "";
         error = "";
+        username = "";
         startedAt = 0;
         finishedAt = 0;
     }
@@ -97,6 +105,7 @@ public final class LoginState {
         m.put("running", phase == Phase.RUNNING);
         m.put("ok", phase == Phase.OK);
         m.put("name", name);
+        m.put("username", username);
         m.put("error", error);
         m.put("elapsedMs", elapsedMs());
         return m;

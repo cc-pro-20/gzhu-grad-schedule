@@ -72,6 +72,9 @@ html.js #login, html.js #app { display: none !important; }
 }
 #login-btn:active { opacity: .85; }
 #login-btn[disabled] { opacity: .6; }
+/* 用已保存的密码登录：次要动作，比主按钮弱一档 */
+#saved-login-btn { margin-top: 10px; height: 42px; font-size: 14px; }
+#saved-login-btn[disabled] { opacity: .6; }
 .msg { min-height: 18px; margin: 10px 0 0; font-size: 12.5px; color: #c81e1e; text-align: center; }
 .tips { margin: 14px 0 0; font-size: 11.5px; color: #9aa1a9; text-align: center; line-height: 1.6; }
 

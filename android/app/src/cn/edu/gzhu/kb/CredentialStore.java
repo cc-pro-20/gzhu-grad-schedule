@@ -20,4 +20,13 @@ public interface CredentialStore {
     boolean hasPassword();
 
     void clearPassword();
+
+    /**
+     * 上一次保存/读取失败的原因；成功时为空串。
+     *
+     * 为什么要暴露这个：密码保存失败时"下次免登录"就无效，但用户只看到
+     * "又要重输密码"，完全无从判断是 Keystore 不可用、存储写失败还是别的原因。
+     * 把它报到页面（/api/saved）后，界面可以直接告诉用户到底哪一步出了错。
+     */
+    String lastError();
 }

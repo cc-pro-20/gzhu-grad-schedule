@@ -554,8 +554,9 @@ const server = http.createServer(async (req, res) => {
         const days = weeks.days.length
           ? weeks.days
           : [1, 2, 3, 4, 5, 6, 7].map((xq) => ({ xq, rq: '', jt: false }));
-        // 只有在查看“当前周”时，日期才与真实日期对应
-        const curDays = week === curWeek ? weeks.days : [];
+        // 基准日期始终是**本周**的日期，前端按周差平移算出任意一周
+        // （学校接口只给本周日期；以前"不是本周就返回空"会让切周后日期消失）
+        const curDays = weeks.days;
         return ok(res, {
           xnxqdm,
           termName: (terms.find((t) => t.dm === xnxqdm) || {}).mc || xnxqdm,

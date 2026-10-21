@@ -80,7 +80,8 @@ function buildGrid(week) {
   return { flat, rows, totalHeight };
 }
 
-const DAY_DATES = ['2026-03-16', '03-17', '03-18', '03-19', '03-20', '03-21', '03-22'];
+// 与真实接口一致：日期是点号分隔（如 10.19），不是短横线
+const DAY_DATES = ['2026.03.16', '03.17', '03.18', '03.19', '03.20', '03.21', '03.22'];
 
 function kbPayload(week) {
   const g = buildGrid(week);
@@ -90,9 +91,9 @@ function kbPayload(week) {
     week,
     curWeek: 4,
     totalWeeks: 30,
-    curDays: week === 4
-      ? DAY_DATES.map((rq, i) => ({ xq: i + 1, rq, jt: false }))
-      : [],
+    // 与真实后端一致：不管看第几周，curDays 都返回**本周**日期作基准，
+    // 前端按周差平移。早先这里只在第 4 周给日期，切周后日期就消失了。
+    curDays: DAY_DATES.map((rq, i) => ({ xq: i + 1, rq, jt: false })),
     jieci: JIECI,
   }, g);
 }
@@ -344,9 +345,17 @@ function apiResponse(pathname, search, forceLogin) {
     return { ok: true, zc: 4, days: DAY_DATES.map((rq, i) => ({ xq: i + 1, rq, jt: false })) };
   }
   if (pathname === '/api/kb') {
-    if (REAL_KB) return REAL_KB;
-    const week = Number(search.get('week') || 4);
-    return Object.assign({ ok: true }, kbPayload(week));
+    const week = Number(search.get('week') || 0);
+    if (REAL_KB) {
+      // 用真实数据，但按请求的周次返回：否则切周后周次标签不会变，
+      // 日期平移也就验证不了。课程块不做周次过滤（那是 KbModel 的职责，
+      // 这里要验的是日期显示）。
+      return Object.assign({}, REAL_KB, {
+        ok: true,
+        week: week >= 1 ? week : REAL_KB.week,
+      });
+    }
+    return Object.assign({ ok: true }, kbPayload(week >= 1 ? week : 4));
   }
   return { ok: false, error: '预览模式不支持 ' + pathname };
 }
@@ -566,8 +575,114 @@ class Cdp {
   }
 }
 
-const READ_METRICS = `(function(){
-  var pre = document.getElementById('probe');
+// ---------------------------------------------------------------- 周次切换验证
+
+const READ_DATES = `(function(){
+  var box = document.getElementById('week-dates');
+  if (!box) return '';
+  var cells = box.children;
+  var out = [];
+  for (var i = 0; i < cells.length; i++) {
+    if (cells[i].className === 'd-label') continue;
+    out.push((cells[i].textContent || '').trim());
+  }
+  return JSON.stringify({
+    hidden: box.classList.contains('hidden'),
+    week: (document.getElementById('week-cur') || {}).textContent || '',
+    dates: out
+  });
+})()`;
+
+async function readDates(cdp) {
+  const raw = await cdp.evalJs(READ_DATES).catch(() => null);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+/** 把 "MM-DD" / "YYYY-MM-DD" 解析成 Date，用来算"是否正好差 7 天" */
+function parseRq(s) {
+  const full = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/.exec(s || '');
+  if (full) return new Date(+full[1], +full[2] - 1, +full[3]);
+  const md = /^(\d{1,2})[./-](\d{1,2})$/.exec(s || '');
+  if (md) return new Date(2000, +md[1] - 1, +md[2]);
+  return null;
+}
+
+/**
+ * 点一次"下一周"，确认日期还在、而且正好后移 7 天，再点回来。
+ *
+ * 对应问题 3：以前切周后日期整排消失（学校只给本周日期，旧实现不是本周就隐藏）。
+ * 这类修复必须真的点一下才算验证过——只看代码里有没有 shiftRq 不算。
+ */
+async function probeWeekDates(cdp) {
+  let bad = 0;
+  console.log('\n  --- 周次切换（日期是否还在）---');
+
+  const before = await readDates(cdp);
+  if (!before) {
+    console.log('    !! 读不到日期栏');
+    return 1;
+  }
+  const filled = before.dates.filter((d) => d && /\d/.test(d)).length;
+  console.log(`    本周: ${before.week.trim()}  显示=${!before.hidden}  有日期的天=${filled}`);
+  if (before.hidden) { console.log('    !! 本周日期栏是隐藏的'); bad++; }
+  if (filled < 7) { console.log(`    !! 本周只有 ${filled} 天有日期`); bad++; }
+
+  await cdp.evalJs("document.getElementById('week-next').click(); 1");
+  let after = null;
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    await sleep(250);
+    const d = await readDates(cdp);
+    if (d && d.week !== before.week && !d.hidden) { after = d; break; }
+    if (d) after = d;
+  }
+  if (!after) {
+    console.log('    !! 点了下一周后读不到状态');
+    return bad + 1;
+  }
+
+  const filled2 = after.dates.filter((d) => d && /\d/.test(d)).length;
+  console.log(`    下一周: ${after.week.trim()}  显示=${!after.hidden}  有日期的天=${filled2}`);
+  if (after.hidden) {
+    console.log('    !! 切到下一周后日期栏被隐藏了（这就是用户报的问题）');
+    bad++;
+  }
+  if (filled2 < 7) {
+    console.log(`    !! 下一周只有 ${filled2} 天有日期`);
+    bad++;
+  }
+  const d0 = parseRq(before.dates[0]);
+  const d1 = parseRq(after.dates[0]);
+  if (d0 && d1) {
+    const diff = Math.round((d1 - d0) / 86400000);
+    console.log(`    首日平移: ${before.dates[0]} -> ${after.dates[0]}  相差 ${diff} 天`);
+    if (diff !== 7) { console.log('    !! 日期平移不是 7 天，说明算错了'); bad++; }
+  } else {
+    console.log(`    !! 日期格式无法解析: ${before.dates[0]} / ${after.dates[0]}`);
+    bad++;
+  }
+
+  // 再点回上一周，应当与最初完全一致
+  await cdp.evalJs("document.getElementById('week-prev').click(); 1");
+  let back = null;
+  const d2 = Date.now() + 10000;
+  while (Date.now() < d2) {
+    await sleep(250);
+    const d = await readDates(cdp);
+    if (d && d.week === before.week) { back = d; break; }
+  }
+  if (!back || back.dates[0] !== before.dates[0]) {
+    console.log(`    !! 回到本周后日期不一致: ${back ? back.dates[0] : '(未取到)'} vs ${before.dates[0]}`);
+    bad++;
+  } else {
+    console.log(`    回到本周: ${back.week.trim()}  首日 ${back.dates[0]}（与最初一致）`);
+  }
+
+  return bad;
+}
+
+const READ_METRICS = `(function(){  var pre = document.getElementById('probe');
   if (!pre) return null;
   var t = pre.textContent || '';
   var i = t.indexOf('PROBE_JSON=');
@@ -648,6 +763,12 @@ async function probeLayouts(chrome, profile, outDir, url, wantShots) {
       if (Math.abs(m.innerWidth - w) > 1) {
         console.log(`    !! 视口没有按预期生效：innerWidth=${m.innerWidth}，期望 ${w}`);
         bad++;
+      }
+
+      // 只在第一个视口做周次切换验证：这是用户报的第三个问题
+      // （点上一周/下一周后日期整排消失），必须真的点一次才能证明修好。
+      if (w === widths[0]) {
+        bad += await probeWeekDates(cdp);
       }
       const overflow = m.docScrollW > m.innerWidth + 1;
       console.log(`    文档宽 ${m.docScrollW} / 视口 ${m.innerWidth}  => ${overflow ? '横向溢出 !!' : '无横向溢出'}`);

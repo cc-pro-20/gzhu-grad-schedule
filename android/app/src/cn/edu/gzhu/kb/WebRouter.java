@@ -158,6 +158,7 @@ public final class WebRouter {
         l.add("/api/login");
         l.add("/api/login-start");
         l.add("/api/login-result");
+        l.add("/api/login-with-saved");
         l.add("/api/saved");
         l.add("/api/logout");
         l.add("/api/state");

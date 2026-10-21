@@ -105,11 +105,14 @@ public class MainActivity extends Activity {
      *   2. 存过密码 —— 静默登录（不打扰用户），成功后页面也是已登录状态
      *   3. 都没有 / 登录失败 —— 照常装载页面，由页面显示登录表单
      *
+     * 注意 repo.terms() 内部已经包含"会话失效则用保存的凭据重登"，
+     * 所以这里不需要自己判断会话新旧，直接用一次业务调用验证即可。
+     *
      * 无论哪条分支页面都会装载，所以不会出现"卡在空白页"的情况。
      */
     private void autoLoginThenLoad() {
         final String u = cred.username();
-        final boolean canAuto = !u.isEmpty() && cred.hasPassword();
+        final boolean canAuto = cred.hasPassword();
         if (!repo.hasSession() && !canAuto) {
             Diag.d("没有可用会话与凭据，直接显示登录页");
             loadPage();
@@ -117,33 +120,40 @@ public class MainActivity extends Activity {
         }
         bar.setVisibility(View.VISIBLE);
         new Thread(() -> {
-            String note = null;
+            String note;
+            long t0 = System.currentTimeMillis();
             try {
-                if (!repo.hasSession()) {
-                    long t0 = System.currentTimeMillis();
-                    repo.login(u, cred.password());
-                    note = "免登录成功（" + (System.currentTimeMillis() - t0) + "ms）";
-                } else {
-                    // 已有会话也要确认它还有效，否则页面加载后接口会 401，
-                    // 用户看到的是"登录页突然跳出来"，不如现在就弄清楚
-                    try {
-                        repo.terms();
-                        note = "复用已保存会话";
-                    } catch (Exception e) {
-                        repo.login(u, cred.password());
-                        note = "旧会话失效，已用保存的密码重登";
-                    }
-                }
+                repo.terms();
+                note = "启动恢复登录成功（" + (System.currentTimeMillis() - t0) + "ms）";
                 displayName = repo.userName();
             } catch (Exception e) {
-                note = "免登录失败，改为手动登录: " + msg(e);
+                // 学校服务器偶发超时是常态，值得再试一次；但凭据本身错了就不必重试
+                if (isCredentialError(e)) {
+                    note = "保存的凭据已失效，需要手动登录：" + msg(e);
+                    repo.noteAuthError(note);
+                } else {
+                    try {
+                        Thread.sleep(900);
+                        repo.terms();
+                        note = "重试后恢复登录成功";
+                        displayName = repo.userName();
+                    } catch (Exception e2) {
+                        note = "自动登录失败，可在登录页点「用已保存的密码登录」重试：" + msg(e2);
+                        repo.noteAuthError(note);
+                    }
+                }
             }
             final String n = note;
             runOnUiThread(() -> {
-                Diag.d(n == null ? "自动登录结束" : n);
+                Diag.d(n);
                 loadPage();
             });
         }, "kb-auto-login").start();
+    }
+
+    /** 是不是"凭据本身不行"（账号密码错/已失效）——这类错误重试没意义 */
+    private static boolean isCredentialError(Exception e) {
+        return e instanceof School.Fail && ((School.Fail) e).authFailed;
     }
 
     private void loadPage() {

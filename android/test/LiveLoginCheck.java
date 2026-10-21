@@ -107,6 +107,24 @@ public class LiveLoginCheck {
         failures += check("用保存的凭据能直接取到课表", kb2.get("flat") instanceof List);
         System.out.println("    取到课程块 " + ((List<?>) kb2.get("flat")).size() + " 个");
 
+        // 这一条对应"经常需要手动登录"：cookie 里有会话标识、但其实已经过期。
+        // 旧实现会直接复用这个坏会话，业务接口 401 → 页面跳登录页 → 逼用户重输密码。
+        // 现在必须先自动用保存的凭据重登一次。
+        System.out.println("\n[6.5] 会话失效时要能自动重登（不能要求手动登录）");
+        MemoryStores.Creds c3 = new MemoryStores.Creds();
+        c3.save(user, pass);
+        MemoryStores.Cookies staleCookies = new MemoryStores.Cookies();
+        Map<String, String> stale = new java.util.LinkedHashMap<>();
+        stale.put("GS_SESSIONID", "stale-invalid-session-for-test");
+        staleCookies.save(stale);
+        KbRepository repo3 = new KbRepository(null, c3, staleCookies);
+        failures += check("坏 cookie 下 hasSession() 仍报 true（正是要修的场景）", repo3.hasSession());
+        List<Map<String, Object>> terms3 = repo3.terms();
+        failures += check("坏会话被自动重登并成功取到学期", terms3 != null && !terms3.isEmpty());
+        failures += check("自动重登后没有残留鉴权错误", repo3.lastAuthError().isEmpty());
+        System.out.println("    学期数 " + terms3.size() + "，lastAuthError=\""
+            + repo3.lastAuthError() + "\"");
+
         System.out.println("\n[7] 退出登录后凭据应被清掉");
         repo.logout();
         failures += check("密码已清除", !creds.hasPassword());

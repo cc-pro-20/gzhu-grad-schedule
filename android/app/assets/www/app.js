@@ -51,6 +51,40 @@ function doLogin(username, password, remember) {
 }
 
 /**
+ * 轮询一次登录尝试的结果。
+ *
+ * 安卓端的登录都是"发起 + 轮询"：桥方法不能等网络（它跑在 WebView 的
+ * JavaBridge 线程上），所以真正的结果记在原生侧的 LoginState 里，页面来查。
+ */
+function pollLoginResult() {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = async () => {
+      let st = null;
+      try {
+        st = await api('/api/login-result');
+      } catch (e) {
+        // 单次查询失败不当作登录失败，继续轮询到超时
+      }
+      if (st) {
+        if (st.phase === 'ok') {
+          if (window.AndroidBridge && window.AndroidBridge.onLoginSettled) {
+            window.AndroidBridge.onLoginSettled();
+          }
+          return resolve({ name: st.name || '', username: st.username || '' });
+        }
+        if (st.phase === 'failed') return reject(new Error(st.error || '登录失败'));
+      }
+      if (Date.now() - started > LOGIN_TIMEOUT_MS) {
+        return reject(new Error('登录超时，请重试'));
+      }
+      setTimeout(tick, LOGIN_POLL_MS);
+    };
+    tick();
+  });
+}
+
+/**
  * 安卓版的登录：桥负责"启动"，服务端负责"记账并完成"，页面负责"轮询"。
  *
  * 为什么是这个分工：
@@ -90,29 +124,18 @@ function androidLogin(username, password, remember) {
   }
 
   // 3) 轮询结果
-  return new Promise((resolve, reject) => {
-    const started = Date.now();
-    const tick = async () => {
-      let st = null;
-      try {
-        st = await api('/api/login-result');
-      } catch (e) {
-        // 单次查询失败不当作登录失败，继续轮询到超时
-      }
-      if (st) {
-        if (st.phase === 'ok') {
-          if (window.AndroidBridge.onLoginSettled) window.AndroidBridge.onLoginSettled();
-          return resolve({ name: st.name || username, username });
-        }
-        if (st.phase === 'failed') return reject(new Error(st.error || '登录失败'));
-      }
-      if (Date.now() - started > LOGIN_TIMEOUT_MS) {
-        return reject(new Error('登录超时，请重试'));
-      }
-      setTimeout(tick, LOGIN_POLL_MS);
-    };
-    tick();
-  });
+  return pollLoginResult();
+}
+
+/**
+ * 用本机已保存的密码登录，不需要用户重新输入。
+ *
+ * 这条路径专门解决"经常需要手动登录"：启动时自动登录可能因为学校服务器抖动
+ * 失败、或者会话中途过期，但凭据其实还在本机，让用户再敲一遍密码毫无必要。
+ */
+async function androidLoginWithSaved() {
+  await api('/api/login-with-saved', { body: {} });
+  return pollLoginResult();
 }
 let toastTimer = null;
 function toast(msg) {
@@ -144,21 +167,66 @@ function showLogin() {
 }
 
 /**
- * 初始化时探测：本机是否已保存过密码。
+ * 初始化时探测：本机是否已保存过密码，以及"为什么没能免登录"。
+ *
  * 安卓版返回 hasPassword=true 时原生会自动完成登录，页面直接进课表；
- * 走到这里的登录页说明自动登录没成功，于是把学号回填好、提示一句。
+ * 走到登录页说明自动登录没成功，于是把学号回填、给出原因、并提供一键重试。
  */
 async function loadSaved() {
   if (!isAndroid()) return;
   let s = null;
   try { s = await api('/api/saved'); } catch (e) { return; }
   if (!s) return;
+
   if (s.username && !$('#username').value) $('#username').value = s.username;
+
+  const hint = $('#saved-hint');
+  const btn = $('#saved-login-btn');
+  const parts = [];
   if (s.hasPassword) {
-    const hint = $('#saved-hint');
-    hint.textContent = '本机已加密保存密码，下次打开无需再输入。';
-    hint.classList.remove('hidden');
+    parts.push('本机已加密保存密码，打开 App 会自动登录。');
+    btn.classList.remove('hidden');
+  } else {
+    btn.classList.add('hidden');
   }
+  // 把失败原因摊开讲。以前这些信息全被吞掉，用户只看到"又要输密码"。
+  if (s.credError) parts.push('密码未能保存：' + s.credError);
+  if (s.lastAuthError) parts.push(s.lastAuthError);
+  if (parts.length) {
+    hint.textContent = parts.join(' ');
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+/** 登录成功后进课表 */
+async function enterApp(r, fallbackName) {
+  const un = (r && r.username) || fallbackName || '';
+  $('#user-name').textContent = (r && r.name) || un || '同学';
+  if (un) localStorage.setItem(KEY_UN, un);
+  $('#password').value = '';
+  showApp();
+  await boot();
+}
+
+/**
+ * 告诉用户"密码到底有没有存住"。
+ *
+ * 这是本次修复的重点之一：以前勾了"记住密码"但保存失败时毫无提示，
+ * 用户只知道下次又要重输，完全没法判断问题出在哪。
+ */
+async function reportRemembered(remember) {
+  if (!isAndroid()) return;
+  let s = null;
+  try { s = await api('/api/saved'); } catch (e) { return; }
+  if (!s) return;
+  if (!remember) {
+    toast('本次未保存密码');
+    return;
+  }
+  if (s.hasPassword) toast('已记住密码，下次打开免登录');
+  else toast('未能记住密码' + (s.credError ? '：' + s.credError : ''));
 }
 
 $('#login-form').addEventListener('submit', async (e) => {
@@ -166,6 +234,7 @@ $('#login-form').addEventListener('submit', async (e) => {
   const username = $('#username').value.trim();
   const password = $('#password').value;
   if (!username || !password) return;
+  const remember = $('#remember').checked;
   const btn = $('#login-btn');
   const msg = $('#login-msg');
   msg.textContent = '';
@@ -175,12 +244,9 @@ $('#login-form').addEventListener('submit', async (e) => {
   // 安卓版让原生也转起来：认证由原生侧发起，这样卡在哪一步一眼能看出来
   if (isAndroid() && window.AndroidBridge.setBusy) window.AndroidBridge.setBusy(true);
   try {
-    const r = await doLogin(username, password, $('#remember').checked);
-    localStorage.setItem(KEY_UN, username);
-    $('#password').value = '';
-    $('#user-name').textContent = r.name || username;
-    showApp();
-    await boot();
+    const r = await doLogin(username, password, remember);
+    await enterApp(r, username);
+    await reportRemembered(remember);
   } catch (err) {
     msg.textContent = err.message;
   } finally {
@@ -188,6 +254,30 @@ $('#login-form').addEventListener('submit', async (e) => {
     btn.textContent = '登 录';
     loading(false);
     if (isAndroid() && window.AndroidBridge.setBusy) window.AndroidBridge.setBusy(false);
+  }
+});
+
+/* 用已保存的密码一键重登（凭据还在，不必让用户重新输入） */
+$('#saved-login-btn').addEventListener('click', async () => {
+  const btn = $('#saved-login-btn');
+  const msg = $('#login-msg');
+  msg.textContent = '';
+  btn.disabled = true;
+  btn.textContent = '登录中…';
+  loading(true);
+  if (window.AndroidBridge && window.AndroidBridge.setBusy) window.AndroidBridge.setBusy(true);
+  try {
+    const r = await androidLoginWithSaved();
+    await enterApp(r, $('#username').value.trim());
+  } catch (err) {
+    msg.textContent = err.message;
+    // 凭据可能真的失效了，刷新提示（按钮会随之隐藏）
+    await loadSaved();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '用已保存的密码登录';
+    loading(false);
+    if (window.AndroidBridge && window.AndroidBridge.setBusy) window.AndroidBridge.setBusy(false);
   }
 });
 
@@ -212,7 +302,7 @@ async function boot() {
     await loadWeek();
     await loadKb(state.week);
   } catch (err) {
-    if (err.status === 401) showLogin();
+    if (err.status === 401) { showLogin(); await loadSaved(); }
     else toast(err.message);
   } finally {
     loading(false);
@@ -257,7 +347,9 @@ async function loadKb(week) {
     renderDates();
     renderGrid();
   } catch (err) {
-    if (err.status === 401) { showLogin(); return; }
+    // 会话彻底不可用时会走到这里。原生侧已经尝试过"用保存的凭据自动重登"，
+    // 所以这里除了回登录页，还要把原因和一键重登的入口给出来。
+    if (err.status === 401) { showLogin(); await loadSaved(); return; }
     toast(err.message);
   } finally {
     loading(false);
@@ -284,24 +376,71 @@ function stepWeek(d) {
 /* ---------------- 渲染 ---------------- */
 const WEEK_CN = ['', '一', '二', '三', '四', '五', '六', '日'];
 
+/**
+ * 把日期字符串（形如 "10.19"、"10-19" 或 "2026-10-19"）平移若干天，
+ * 保持原来的分隔符与格式。
+ *
+ * 学校接口只给**本周**的日期，看别的周就没数据。以前的做法是"不是本周就不显示
+ * 日期"，结果点上一周/下一周后日期整排消失——这正是用户报的问题。
+ * 现在按周差平移即可：同一星期几相差 7 的整数倍。
+ *
+ * ⚠️ 真实格式是点号（`10.19`），不是短横线。第一版只认 `MM-DD`，
+ * 于是平移直接不生效、每周都显示本周日期——所以分隔符必须按输入原样保留。
+ *
+ * 只有月日时用固定年份（2000）参与计算，跨年由日期自然滚动处理，
+ * 反正只显示月日，年份不参与显示。
+ */
+function shiftRq(rq, days) {
+  if (!rq) return '';
+  if (!days) return rq; // 不平移就原样返回，避免改动格式
+  const full = /^(\d{4})([./-])(\d{1,2})\2(\d{1,2})$/.exec(rq);
+  const md = /^(\d{1,2})([./-])(\d{1,2})$/.exec(rq);
+  let d;
+  let sep;
+  let hasYear = false;
+  if (full) {
+    hasYear = true;
+    sep = full[2];
+    d = new Date(+full[1], +full[3] - 1, +full[4]);
+  } else if (md) {
+    sep = md[2];
+    d = new Date(2000, +md[1] - 1, +md[3]);
+  } else {
+    return rq; // 认不出的格式就别乱改，原样返回
+  }
+  d.setDate(d.getDate() + days);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return hasYear ? `${d.getFullYear()}${sep}${mm}${sep}${dd}` : `${mm}${sep}${dd}`;
+}
+
 function renderDates() {
   const box = $('#week-dates');
   box.innerHTML = '';
-  const isCur = state.week === state.curWeek;
-  const byDay = {};
-  for (const d of state.data && state.data.curDays ? state.data.curDays : []) byDay[d.xq] = d;
-  if (!isCur || !Object.keys(byDay).length) {
+
+  // 基准日期一律用**本周**的（/api/kb 的 curDays），再按周差平移到当前查看的周。
+  const base = (state.data && state.data.curDays && state.data.curDays.length)
+    ? state.data.curDays
+    : (state.days || []);
+  if (!base.length) {
     box.classList.add('hidden');
     return;
   }
+  const curWeek = state.curWeek || 1;
+  const week = state.week || curWeek;
+  const offsetDays = (week - curWeek) * 7;
+  const isCur = week === curWeek;
+
   box.classList.remove('hidden');
   const spacer = document.createElement('div');
   spacer.className = 'd-label';
   box.appendChild(spacer);
   for (let xq = 1; xq <= 7; xq++) {
+    const src = base.find((d) => d.xq === xq);
     const el = document.createElement('div');
-    el.textContent = byDay[xq] ? byDay[xq].rq : '';
-    if (byDay[xq] && byDay[xq].jt) el.title = '调休/补课';
+    el.textContent = src ? shiftRq(src.rq, offsetDays) : '';
+    // 调休/补课只对本周有意义，别的周平移出来的日期不代表真实上课日
+    if (isCur && src && src.jt) el.title = '调休/补课';
     box.appendChild(el);
   }
 }
